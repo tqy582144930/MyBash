@@ -4,6 +4,9 @@
 #include<sys/utsname.h>
 #include<unistd.h>
 #include<stdlib.h>
+#include<assert.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #define CMDNUM 10
 
@@ -14,6 +17,10 @@ void PrintfTag()
 	struct passwd *pw = getpwuid(getuid());
 	struct utsname un;
 	uname(&un);
+	char nodeName[128] = {0};
+	strcpy(nodeName, un.nodename);
+	char *name = strtok(nodeName, ".");//we need to cut nodename from .
+
 
 	char pwd[128] = {0};
 	getcwd(pwd, 127);//get directory path
@@ -28,18 +35,18 @@ void PrintfTag()
 		{
 			p--;
 		}
-		if(strlen(pwd) != 1)
+		if(strlen(pwd) != 1)// if pwd=/ we do not need move p;
 		{
-			p++;
+			p++;//now p is point / ,we need to move next char
 		}
 	}
 
 	char flag = '$';
-	if(pw->pw_uid == 0)
+	if(pw->pw_uid == 0)//if path is equal to home diretory,we need to change $ to #
 	{
 		flag = '#';
 	}
-	printf("[%s@%s %s]%c ", pw->pw_name, un.nodename, p, flag);
+	printf("MyBash[%s@%s %s]%c ", pw->pw_name, name, p, flag);
 }
 
 //recive PROMPT
@@ -75,11 +82,15 @@ void CutCmd(char *cmd, char *CMD[])
 //operator for cd
 void OperatorCd(char *path)
 {
+	if(path == NULL)
+	{
+		return;//if cd+' ', we do not change our directory
+	}
 	static char OLDPWD[128] = {0};//last locatian
 	char nowpwd[128] = {0};
 	getcwd(nowpwd, 127);
 
-	if(path == NULL || strncmp(path, "~", 1) == 0)
+	if(strncmp(path, "~", 1) == 0)
 	{
 		struct passwd *pw = getpwuid(getuid());
 		chdir(pw->pw_dir);//change now directory to home directory;
@@ -88,7 +99,7 @@ void OperatorCd(char *path)
 	{
 		if(strlen(OLDPWD) == 0)
 		{
-			printf("MyBash::OLDPWD not set\n");
+			printf("MyBash: cd: OLDPWD not set\n");
 			return;
 		}
 		else 
@@ -113,7 +124,7 @@ int AnalyCmd(char *CMD[])
 {
 	if(strncmp(CMD[0], "cd", 2) == 0)
 	{
-		OperatorCd(CMD[1]);
+		OperatorCd(CMD[1]);//cd cmd only need one parameter, if you send patameters we can only get first parameter
 		return 0;
 	}
 	else if(strncmp(CMD[0], "exit", 4) == 0)
@@ -126,6 +137,32 @@ int AnalyCmd(char *CMD[])
 //come ture operation
 void OperatorCmd(char *CMD[])
 {
+	pid_t pid = fork();
+	assert(-1 != pid);
+
+	//child progress
+	if(0 ==pid)
+	{
+		char path[128] = "/home/siMeng/Desktop/MyBash/MyBin/";
+		if(strstr(CMD[0], "/") == NULL)//if CMD has /,user give path,so we do not search in our given path,we can use user given path to do
+		{
+			strcat(path, CMD[0]);
+		}
+		else
+		{
+			memset(path, 0, 128);
+			strcpy(path, CMD[0]);
+		}
+
+		execv(path, CMD);
+		printf("%s:Command Not Found\n", CMD[0]);
+		exit(0);//protect child progress still run
+	}
+	else 
+	{
+		//father progress
+		wait(NULL);
+	}
 	
 }
 
@@ -149,13 +186,14 @@ int main()
 		CutCmd(cmd, CMD);
 
 		//analysize CMD
+		//only cd and exit those cmd need to come ture in MyBash,other cmds we need to creat child progress to come ture;
 		if(!AnalyCmd(CMD))
 		{
 			continue;
 		}
 		
 		//come ture operation
-//		OperatorCmd(CMD);
+		OperatorCmd(CMD);
 	}
 	return 0;
 }
